@@ -7,8 +7,8 @@
  */
 namespace EasySwoole\Kafka\Offset;
 
-use EasySwoole\Component\Singleton;
 use EasySwoole\Kafka\BaseProcess;
+use EasySwoole\Kafka\Broker;
 use EasySwoole\Kafka\Config\ConsumerConfig;
 use EasySwoole\Kafka\Consumer\Assignment;
 use EasySwoole\Kafka\Exception\ConnectionException;
@@ -16,7 +16,20 @@ use EasySwoole\Kafka\Protocol;
 
 class Process extends BaseProcess
 {
-    use Singleton;
+    /**
+     * Process constructor.
+     * @param ConsumerConfig $config
+     * @param Assignment     $assignment
+     * @param Broker         $broker
+     * @throws \EasySwoole\Kafka\Exception\Exception
+     */
+    public function __construct(ConsumerConfig $config, Assignment $assignment, Broker $broker)
+    {
+        parent::__construct($config);
+
+        $this->setAssignment($assignment);
+        $this->setBroker($broker);
+    }
 
     /**
      * @return array
@@ -26,7 +39,7 @@ class Process extends BaseProcess
     public function listOffset(): array
     {
         $assignedTopics     = $this->getAssignment()->getTopics();
-        $topicList  = ConsumerConfig::getInstance()->getTopics();
+        $topicList  = $this->getConfig()->getTopics();
         foreach ($assignedTopics as $nodeId => $topics) {
             $data = [];
             foreach ($topics as $topic => $partitions) {
@@ -40,7 +53,6 @@ class Process extends BaseProcess
                         'partitions' => [],
                     ];
 
-
                     foreach ($partitions['partitions'] as $k => $partId) {
                         $item['partitions'][] = [
                             'partition_id' => $partId,
@@ -49,14 +61,14 @@ class Process extends BaseProcess
                         ];
                     }
 
-                    if(isset($data[$topic])){
-                        $data[$topic]['partitions'] = array_merge($data[$topic]['partitions'],$item['partitions']);
-                    }else{
+                    if (isset($data[$topic])) {
+                        $data[$topic]['partitions'] = array_merge($data[$topic]['partitions'], $item['partitions']);
+                    } else {
                         $data[$topic] = $item;
                     }
                 }
             }
-            $data = array_merge($data,[]);
+            $data = array_merge($data, []);
             $params = [
                 'replica_id' => -1,
                 'data'       => $data,
@@ -70,18 +82,19 @@ class Process extends BaseProcess
             $ret[] = Protocol::decode(Protocol::OFFSET_REQUEST, substr($data, 8));
         }
 
-        if(!empty($ret)){
+        if (!empty($ret)) {
             $result = [];
-            for($i = 0;$i<count($ret) ; $i++){
-                if($i == 0){
+            for ($i = 0; $i < count($ret); $i++) {
+                if ($i == 0) {
                     $result = $ret[$i];
                     continue;
                 }
-                foreach ($result as $k => $topic){
-                    foreach ($ret[$i] as $queryTopic)
-                    if($topic['topicName'] == $queryTopic['topicName']){
-                        $result[$k]['partitions'] = array_merge($result[$k]['partitions'],$queryTopic['partitions']);
-                        break;
+                foreach ($result as $k => $topic) {
+                    foreach ($ret[$i] as $queryTopic) {
+                        if ($topic['topicName'] == $queryTopic['topicName']) {
+                            $result[$k]['partitions'] = array_merge($result[$k]['partitions'], $queryTopic['partitions']);
+                            break;
+                        }
                     }
                 }
             }
@@ -93,14 +106,13 @@ class Process extends BaseProcess
     /**
      * @return array
      * @throws ConnectionException
-     * @throws \EasySwoole\Kafka\Exception\Config
      * @throws \EasySwoole\Kafka\Exception\Exception
      */
     public function fetchOffset(): array
     {
         $broker     = $this->getBroker();
         $topics     = $broker->getTopics();
-        $topicList  = $this->config->getTopics();
+        $topicList  = $this->getConfig()->getTopics();
 
         $connect = $broker->getMetaConnect($broker->getGroupBrokerId());
 
@@ -130,7 +142,7 @@ class Process extends BaseProcess
         }
 
         $params = [
-            'group_id' => ConsumerConfig::getInstance()->getGroupId(),
+            'group_id' => $this->getConfig()->getGroupId(),
             'data'     => $data,
         ];
 
@@ -145,7 +157,6 @@ class Process extends BaseProcess
      * @param array $commitOffsets
      * @return array
      * @throws ConnectionException
-     * @throws \EasySwoole\Kafka\Exception\Config
      * @throws \EasySwoole\Kafka\Exception\Exception
      */
     public function commit(array $commitOffsets = []): array
@@ -169,7 +180,7 @@ class Process extends BaseProcess
         }
 
         $params = [
-            'group_id'  => ConsumerConfig::getInstance()->getGroupId(),
+            'group_id'  => $this->getConfig()->getGroupId(),
             'generation_id' => $this->getAssignment()->getGenerationId(),
             'member_id' => $this->getAssignment()->getMemberId(),
             'data'      => $data,
@@ -180,10 +191,5 @@ class Process extends BaseProcess
         $ret = Protocol::decode(Protocol::OFFSET_COMMIT_REQUEST, substr($data, 8));
 
         return $ret;
-    }
-
-    protected function getAssignment(): Assignment
-    {
-        return Assignment::getInstance();
     }
 }

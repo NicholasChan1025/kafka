@@ -14,9 +14,9 @@ use EasySwoole\Kafka\SyncMeta\Process;
 go(function () {
 
     $config = new Config();
-    $config->setMetadataBrokerList('127.0.0.1:9092');
+    $config->setMetadataBrokerList('127.0.0.1:9092,127.0.0.1:9093');
     $config->setBrokerVersion('0.9.0');
 
-    $metaData = new Process();
-    $metaData->syncMeta();
+    $metaData = new Process($config);
+    var_dump($metaData->syncMeta()->getTopics());
 });
